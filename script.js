@@ -1,4 +1,3 @@
-// 1. KONFIGURASI FIREBASE
 const firebaseConfig = {
     apiKey: "AIzaSyDlucMVwMUbw7Ab3t2AVzI13EOHUrqDNZw",
     authDomain: "web-kelas-5b83a.firebaseapp.com",
@@ -9,131 +8,107 @@ const firebaseConfig = {
     appId: "1:711947014423:web:d8cb787c503d7d7538e752",
     measurementId: "G-RYNNLZCGY5"
 };
-
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-// 2. DATABASE USER (LENGKAP 25 USER + OWNER)
-const dataUsers = [
-    { user: "9¹", pass: "91" },
-    { user: "admin", pass: "admin123" }
-];
+// DATA USER DEFAULT
+const defaultUsers = [{ user: "9¹", pass: "91" }, { user: "admin", pass: "admin123" }];
+for (let i = 1; i <= 25; i++) { defaultUsers.push({ user: "user" + i, pass: "pass" + i }); }
 
-// Loop otomatis buat bikin user1 sampe user25 biar kodenya gak kepanjangan
-for (let i = 1; i <= 25; i++) {
-    dataUsers.push({ user: "user" + i, pass: "pass" + i });
-}
-
-// 3. LOGIKA LOGIN (FIX NAMA & ANTI-NYANGKUT)
+// LOGIN LOGIC
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const uInput = document.getElementById('username').value;
-    const pInput = document.getElementById('password').value;
-    
-    // Cari user di database lokal
-    const valid = dataUsers.find(u => u.user === uInput && u.pass === pInput);
+    const uInput = document.getElementById('username').value.trim();
+    const pInput = document.getElementById('password').value.trim();
 
-    if (valid) {
-        // Cek apakah di-ban
+    const snapCustom = await database.ref('users_custom/' + uInput).once('value');
+    const customData = snapCustom.val();
+    const isDefault = defaultUsers.find(u => u.user === uInput && u.pass === pInput);
+    const isCustom = customData && customData.pass === pInput;
+
+    if (isDefault || isCustom) {
         const snapBan = await database.ref('status_user/' + uInput).once('value');
-        if (snapBan.val() === "banned") return alert("AKSES DIBLOKIR ADMIN!");
+        if (snapBan.val() === "banned") return alert("AKSES DIBLOKIR!");
 
-        // Cek apakah sedang aktif (Anti-Nyangkut)
         const cekOnline = await database.ref('log_online/' + uInput).once('value');
         if (uInput !== "admin" && cekOnline.exists()) {
-            const selisih = Date.now() - cekOnline.val().last_seen;
-            if (selisih < 20000) return alert("Akun '" + uInput + "' sedang aktif!");
+            if (Date.now() - (cekOnline.val().last_seen || 0) < 20000) return alert("Akun sedang aktif!");
         }
 
-        // Simpan ke Session & Firebase
         localStorage.setItem('savedUser', uInput);
-        const userLogRef = database.ref('log_online/' + uInput);
-        
-        userLogRef.set({
-            username: uInput, // Ini yang fix biar gak muncul "Unified"
-            last_seen: firebase.database.ServerValue.TIMESTAMP,
-            jam: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        database.ref('log_online/' + uInput).set({
+            username: uInput, last_seen: firebase.database.ServerValue.TIMESTAMP, jam: new Date().toLocaleTimeString('id-ID')
         });
+        database.ref('log_online/' + uInput).onDisconnect().remove();
 
-        userLogRef.onDisconnect().remove();
-
-        if (uInput === "admin") {
-            alert('Mode Owner Aktif!');
-            tampilkanLogAdmin(); 
-            mulaiPembersihOtomatis(); 
-        } else {
-            alert('Login Berhasil!');
-            window.location.href = "page91.html";
-        }
-    } else {
-        alert('Username atau Password salah!');
-    }
+        if (uInput === "admin") { tampilkanLogAdmin(); }
+        else { window.location.href = "page91.html"; }
+    } else { alert('User/Pass Salah!'); }
 });
 
-// 4. ADMIN: UPDATE PESAN & JADWAL
+// FITUR TAMBAH USER (FIX GAK BISA DIPENCET)
+window.tambahUserCustom = function() {
+    const u = document.getElementById('customUser').value.trim();
+    const p = document.getElementById('customPass').value.trim();
+    if(!u || !p) return alert("Isi dulu Bos!");
+    database.ref('users_custom/' + u).set({ user: u, pass: p })
+    .then(() => { alert("User " + u + " tersimpan!"); document.getElementById('customUser').value=""; document.getElementById('customPass').value=""; });
+};
+
+// ADMIN PANEL LOGIC
+function tampilkanLogAdmin() {
+    document.getElementById('adminPanel').style.display = 'block';
+    
+    database.ref('log_online').on('value', snap => {
+        const list = document.getElementById('onlineList');
+        list.innerHTML = "";
+        snap.forEach(c => {
+            const nama = c.val().username || c.key;
+            list.innerHTML += `<li class="list-item"><span>🟢 ${nama}</span><button type="button" onclick="banUser('${nama}')" style="background:red;color:#fff;border:none;font-size:10px;padding:2px 5px;border-radius:3px;">BAN</button></li>`;
+        });
+    });
+
+    database.ref('status_user').on('value', snap => {
+        const bList = document.getElementById('bannedList');
+        bList.innerHTML = "";
+        snap.forEach(c => {
+            if(c.val() === "banned") {
+                bList.innerHTML += `<li class="list-item"><span>🚫 ${c.key}</span><button type="button" onclick="unbanUser('${c.key}')" style="background:green;color:#fff;border:none;font-size:10px;padding:2px 5px;border-radius:3px;">UNBAN</button></li>`;
+            }
+        });
+    });
+}
+
+window.banUser = function(t) {
+    if (t === "admin" || t === "9¹") return;
+    if (confirm("Ban " + t + "?")) { database.ref('status_user/' + t).set("banned"); database.ref('log_online/' + t).remove(); }
+};
+
+window.unbanUser = function(t) {
+    if (confirm("Unban " + t + "?")) database.ref('status_user/' + t).remove();
+};
+
 window.updateWebSekarang = function() {
     const t = document.getElementById('inputTeks').value;
     const d = parseInt(document.getElementById('timerUpdate').value);
     const exp = d > 0 ? Date.now() + (d * 3600000) : null;
-    
-    database.ref('konten_web').set({
-        pesan: t,
-        waktu: new Date().toLocaleString('id-ID'),
-        exp: exp
-    }).then(() => { alert("Pesan Berhasil Diupdate!"); document.getElementById('inputTeks').value = ""; });
+    database.ref('konten_web').set({ pesan: t, waktu: new Date().toLocaleString(), exp: exp }).then(() => alert("Pesan Terupdate!"));
 };
 
 window.updateJadwalSistem = function() {
-    const jenis = document.getElementById('pilihJenisJadwal').value;
-    const hari = document.getElementById('pilihHari').value;
-    const isi = document.getElementById('isiJadwalBaru').value;
-    
-    database.ref('data_kelas/' + jenis + '/' + hari).set(isi).then(() => {
-        alert("Jadwal " + hari + " Berhasil!");
-        document.getElementById('isiJadwalBaru').value = "";
-    });
-};
-
-// 5. MONITORING PANEL
-function tampilkanLogAdmin() {
-    const panel = document.getElementById('adminPanel');
-    if (panel) panel.style.display = 'block';
-
-    database.ref('log_online').on('value', (snapshot) => {
-        const list = document.getElementById('onlineList');
-        if (list) {
-            list.innerHTML = "";
-            snapshot.forEach((child) => {
-                const data = child.val();
-                list.innerHTML += `<li style="display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid #222;">
-                    <span>🟢 <b>${data.username}</b></span>
-                    <button type="button" onclick="banUser('${data.username}')" style="background:red; color:white; border:none; font-size:9px; border-radius:3px; padding:2px 5px; cursor:pointer;">BAN</button>
-                </li>`;
-            });
-        }
-    });
-}
-
-window.banUser = function(target) {
-    if (target === "admin" || target === "9¹") return alert("Bos tidak bisa diban!");
-    if (confirm("Ban " + target + "?")) {
-        database.ref('status_user/' + target).set("banned");
-        database.ref('log_online/' + target).remove();
-    }
+    const j = document.getElementById('pilihJenisJadwal').value;
+    const h = document.getElementById('pilihHari').value;
+    const i = document.getElementById('isiJadwalBaru').value;
+    database.ref('data_kelas/' + j + '/' + h).set(i).then(() => alert("Jadwal Berhasil!"));
 };
 
 window.hapusLogServer = function() {
-    if(confirm("Hapus semua log online?")) database.ref('log_online').remove();
+    if(confirm("Bersihkan log?")) database.ref('log_online').remove();
 };
 
-function mulaiPembersihOtomatis() {
-    setInterval(() => {
-        const skrg = Date.now();
-        database.ref('log_online').once('value', (s) => {
-            s.forEach((c) => { if (skrg - c.val().last_seen > 20000) c.ref.remove(); });
-        });
-        database.ref('konten_web').once('value', (s) => {
-            if (s.val()?.exp && skrg > s.val().exp) database.ref('konten_web').remove();
-        });
-    }, 10000);
-}
+setInterval(() => {
+    const skrg = Date.now();
+    database.ref('log_online').once('value', s => {
+        s.forEach(c => { if (skrg - (c.val().last_seen || 0) > 20000) c.ref.remove(); });
+    });
+}, 10000);

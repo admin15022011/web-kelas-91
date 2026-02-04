@@ -1,17 +1,51 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modern Login Page</title>
+    <title>9¹ | Modern Login & Admin</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* CSS Tambahan untuk Efek Hujan & Admin Panel */
+        body { margin: 0; padding: 0; overflow-x: hidden; }
+        .background-container { position: fixed; top: 0; width: 100vw; height: 100vh; z-index: -1; background: #000; overflow: hidden; }
+        .drop { position: absolute; width: 2px; height: 15px; background: rgba(0, 210, 255, 0.3); animation: fall linear infinite; }
+        @keyframes fall { to { transform: translateY(100vh); } }
+
+        /* Styling Panel Admin agar rapi di HP Vivo Y16 */
+        #adminPanel {
+            display: none; 
+            margin-top: 20px; 
+            text-align: left; 
+            background: rgba(255, 255, 255, 0.05); 
+            padding: 15px; 
+            border-radius: 10px; 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .admin-section { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
+        .admin-section h4 { margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+        input, select, textarea { 
+            width: 100%; padding: 8px; margin-bottom: 5px; 
+            background: #111; border: 1px solid #333; color: #fff; 
+            border-radius: 5px; font-size: 12px; box-sizing: border-box;
+        }
+        .adm-btn { 
+            width: 100%; padding: 8px; border: none; border-radius: 5px; 
+            font-weight: bold; cursor: pointer; font-size: 11px; margin-top: 5px;
+        }
+        .list-container { list-style: none; padding: 0; margin: 0; font-size: 11px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #222; }
+    </style>
 </head>
 <body>
-    <div class="background-container"></div>
+    <div class="background-container" id="rainContainer"></div>
+
     <div class="login-box">
-        <h2>Login</h2>
+        <h2>Login 9¹</h2>
         <form id="loginForm">
             <div class="input-group">
                 <input type="text" id="username" required>
@@ -21,42 +55,73 @@
                 <input type="password" id="password" required>
                 <label>Password</label>
             </div>
-            <button type="submit" class="sign-in-btn">Login</button>
-            <p class="footer-text">Gak tau user & password? <a href="https://wa.me/6285817889864" target="_blank">Tanya admin😋</a></p>
-            <p class="footer-text">©2025 ARLIN</p>
+            <button type="submit" class="sign-in-btn">LOGIN</button>
+            <p class="footer-text">Lupa password? <a href="https://wa.me/6285817889864" target="_blank">Hubungi Admin</a></p>
 
-            <div id="adminPanel" style="display: none; margin-top: 20px; text-align: left; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
-                <h4 style="color: #00d2ff; font-size: 11px; margin-bottom: 5px;">Log User Online:</h4>
-                <ul id="onlineList" style="list-style: none; color: #fff; font-size: 10px; padding: 0; max-height: 80px; overflow-y: auto; margin-bottom: 10px;"></ul>
-
-                <div style="border-top: 1px dashed #333; padding-top: 10px;">
-                    <h4 style="color: #00d2ff; font-size: 11px; margin-bottom: 5px;">📢 Update Pesan:</h4>
-                    <textarea id="inputTeks" placeholder="Isi pesan..." style="width:100%; background:#111; color:#fff; border:1px solid #333; font-size:10px; border-radius:3px;"></textarea>
-                    <select id="timerUpdate" style="width:100%; background:#111; color:#fff; margin-top:5px; font-size:10px;">
-                        <option value="0">Selamanya</option>
-                        <option value="1">1 Jam</option>
-                        <option value="5">5 Jam</option>
-                    </select>
-                    <button type="button" onclick="updateWebSekarang()" style="width:100%; background:#00d2ff; color:#000; font-size:10px; font-weight:bold; margin-top:5px; cursor:pointer;">PUBLISH PESAN</button>
+            <div id="adminPanel">
+                
+                <div class="admin-section">
+                    <h4 style="color: #2ecc71;">➕ TAMBAH USER</h4>
+                    <input type="text" id="customUser" placeholder="Username Baru">
+                    <input type="text" id="customPass" placeholder="Password Baru">
+                    <button type="button" onclick="tambahUserCustom()" class="adm-btn" style="background: #2ecc71; color: #000;">SIMPAN USER</button>
                 </div>
 
-                <div style="border-top: 1px dashed #333; margin-top: 10px; padding-top: 10px;">
-                    <h4 style="color: #f1c40f; font-size: 11px; margin-bottom: 5px;">📅 Edit Jadwal:</h4>
-                    <select id="pilihJenisJadwal" style="width:100%; background:#111; color:#fff; font-size:10px;">
-                        <option value="jadwal_pelajaran">📚 Pelajaran</option>
-                        <option value="jadwal_piket">🧹 Piket</option>
-                    </select>
-                    <select id="pilihHari" style="width:100%; background:#111; color:#fff; font-size:10px; margin-top:3px;">
-                        <option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option>
-                    </select>
-                    <textarea id="isiJadwalBaru" placeholder="Isi jadwal..." style="width:100%; background:#111; color:#fff; border:1px solid #333; font-size:10px; margin-top:3px;"></textarea>
-                    <button type="button" onclick="updateJadwalSistem()" style="width:100%; background:#f1c40f; color:#000; font-size:10px; font-weight:bold; margin-top:5px; cursor:pointer;">SIMPAN JADWAL</button>
+                <div class="admin-section">
+                    <h4 style="color: #00d2ff;">🟢 ONLINE SEKARANG</h4>
+                    <ul id="onlineList" class="list-container"></ul>
                 </div>
 
-                <button type="button" onclick="hapusLogServer()" style="background:none; border:1px solid #ff4d4d; color:#ff4d4d; font-size:9px; cursor:pointer; margin-top:10px;">Hapus Riwayat</button>
+                <div class="admin-section">
+                    <h4 style="color: #ff4d4d;">🚫 DAFTAR BANNED</h4>
+                    <ul id="bannedList" class="list-container"></ul>
+                </div>
+
+                <div class="admin-section">
+                    <h4 style="color: #f1c40f;">📢 UPDATE PENGUMUMAN</h4>
+                    <textarea id="inputTeks" rows="2" placeholder="Tulis pesan..."></textarea>
+                    <select id="timerUpdate">
+                        <option value="0">Tampilkan Selamanya</option>
+                        <option value="1">Hilang dalam 1 Jam</option>
+                        <option value="24">Hilang dalam 24 Jam</option>
+                    </select>
+                    <button type="button" onclick="updateWebSekarang()" class="adm-btn" style="background: #f1c40f; color: #000;">PUBLISH PESAN</button>
+                </div>
+
+                <div class="admin-section">
+                    <h4 style="color: #9b59b6;">📅 EDIT JADWAL</h4>
+                    <select id="pilihJenisJadwal">
+                        <option value="jadwal_pelajaran">📚 Jadwal Pelajaran</option>
+                        <option value="jadwal_piket">🧹 Jadwal Piket</option>
+                    </select>
+                    <select id="pilihHari">
+                        <option value="Senin">Senin</option>
+                        <option value="Selasa">Selasa</option>
+                        <option value="Rabu">Rabu</option>
+                        <option value="Kamis">Kamis</option>
+                        <option value="Jumat">Jumat</option>
+                    </select>
+                    <textarea id="isiJadwalBaru" rows="2" placeholder="Contoh: Budi, Andi, Ani..."></textarea>
+                    <button type="button" onclick="updateJadwalSistem()" class="adm-btn" style="background: #9b59b6; color: #fff;">UPDATE JADWAL</button>
+                </div>
+
+                <button type="button" onclick="hapusLogServer()" style="background:none; border:1px solid #555; color:#555; font-size:9px; width:100%; cursor:pointer; margin-top:10px;">Bersihkan Semua Log Online</button>
             </div>
         </form>
     </div>
+
     <script src="script.js"></script>
+    <script>
+        // Script Hujan Otomatis
+        const container = document.getElementById('rainContainer');
+        for (let i = 0; i < 50; i++) {
+            const drop = document.createElement('div');
+            drop.classList.add('drop');
+            drop.style.left = Math.random() * 100 + 'vw';
+            drop.style.animationDuration = Math.random() * 1.5 + 0.5 + 's';
+            drop.style.animationDelay = Math.random() * 2 + 's';
+            container.appendChild(drop);
+        }
+    </script>
 </body>
 </html>
