@@ -1,3 +1,6 @@
+// ==========================================
+// 1. KONFIGURASI FIREBASE & GLOBAL STATE
+// ==========================================
 const firebaseConfig = {
     apiKey: "AIzaSyDlucMVwMUbw7Ab3t2AVzI13EOHUrqDNZw",
     authDomain: "web-kelas-5b83a.firebaseapp.com",
@@ -11,107 +14,111 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-const defaultUsers = [{ user: "9¹", pass: "91" }, { user: "admin", pass: "admin123" }];
-for (let i = 1; i <= 25; i++) { defaultUsers.push({ user: "user" + i, pass: "pass" + i }); }
+// State Global
+const me = localStorage.getItem('savedUser') || "Guest";
+let isMaintenanceActive = false;
 
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const uInput = document.getElementById('username').value.trim();
-    const pInput = document.getElementById('password').value.trim();
+/** * PERBAIKAN UTAMA: 
+ * Daftar bypass harus mencakup semua variasi penulisan 
+ * atau pastikan database/localStorage menggunakan huruf yang sama.
+ */
+const bypassUsers = ["admin", "Tya", "9¹", "Kontol"]; 
 
-    const snapCustom = await database.ref('users_custom/' + uInput).once('value');
-    const customData = snapCustom.val();
-    const isDefault = defaultUsers.find(u => u.user === uInput && u.pass === pInput);
-    const isCustom = customData && customData.pass === pInput;
+// ==========================================
+// 2. MONITORING MAINTENANCE (LIVE KICK)
+// ==========================================
+database.ref('maintenance/isLive').on('value', snap => {
+    isMaintenanceActive = snap.val();
+    
+    // Update teks status di panel admin secara real-time
+    const elStatus = document.getElementById('mtStatus');
+    if (elStatus) {
+        elStatus.innerText = isMaintenanceActive ? "Status: AKTIF" : "Status: NON-AKTIF";
+        elStatus.style.color = isMaintenanceActive ? "#ff4d4d" : "#2ecc71";
+        elStatus.style.fontWeight = "bold";
+    }
 
-    if (isDefault || isCustom) {
-        const snapBan = await database.ref('status_user/' + uInput).once('value');
-        if (snapBan.val() === "banned") return alert("AKSES DIBLOKIR!");
-
-        const cekOnline = await database.ref('log_online/' + uInput).once('value');
-        if (uInput !== "admin" && cekOnline.exists()) {
-            if (Date.now() - (cekOnline.val().last_seen || 0) < 20000) return alert("Akun sedang aktif!");
+    // CEK APAKAH HARUS DITENDANG?
+    // User ditendang HANYA JIKA: Maintenance ON DAN (User bukan di daftar bypass)
+    if (isMaintenanceActive === true) {
+        if (!bypassUsers.includes(me)) {
+            // Jika sedang di dalam dashboard (bukan halaman login), tendang keluar
+            if (!window.location.href.includes("index.html")) {
+                alert("🚨 SERVER MAINTENANCE!\nSistem sedang diperbarui, Anda dialihkan ke halaman utama.");
+                window.location.href = "index.html";
+            }
         }
-
-        localStorage.setItem('savedUser', uInput);
-        database.ref('log_online/' + uInput).set({
-            username: uInput, last_seen: firebase.database.ServerValue.TIMESTAMP, jam: new Date().toLocaleTimeString('id-ID')
-        });
-        database.ref('log_online/' + uInput).onDisconnect().remove();
-
-        if (uInput === "admin") { tampilkanLogAdmin(); }
-        else { window.location.href = "page91.html"; }
-    } else { alert('User/Pass Salah!'); }
+    }
 });
 
-// FITUR KELOLA ROLE ADMIN CHAT
-window.setRole = function(role) {
-    const user = document.getElementById('adminUser').value.trim();
-    if(!user) return alert("Isi nama usernya dulu!");
-    database.ref('roles/' + user).set(role).then(() => {
-        alert("Status " + user + " berhasil diubah jadi " + role);
-        document.getElementById('adminUser').value = "";
-    });
-};
+// ==========================================
+// 3. SISTEM LOGIN (HARD-LOCKED SECURITY)
+// ==========================================
+const defaultUsers = [
+    { user: "9¹", pass: "91" }, 
+    { user: "admin", pass: "admin123" }, 
+    { user: "Tya", pass: "tya123" }
+];
+for (let i = 1; i <= 25; i++) { defaultUsers.push({ user: "user" + i, pass: "pass" + i }); }
 
-window.tambahUserCustom = function() {
-    const u = document.getElementById('customUser').value.trim();
-    const p = document.getElementById('customPass').value.trim();
-    if(!u || !p) return alert("Isi dulu Bos!");
-    database.ref('users_custom/' + u).set({ user: u, pass: p })
-    .then(() => { alert("User " + u + " tersimpan!"); document.getElementById('customUser').value=""; document.getElementById('customPass').value=""; });
-};
+const loginForm = document.getElementById('loginForm');
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const uInput = document.getElementById('username').value.trim();
+        const pInput = document.getElementById('password').value.trim();
 
-function tampilkanLogAdmin() {
-    document.getElementById('adminPanel').style.display = 'block';
-    
-    database.ref('log_online').on('value', snap => {
-        const list = document.getElementById('onlineList');
-        list.innerHTML = "";
-        snap.forEach(c => {
-            const nama = c.val().username || c.key;
-            list.innerHTML += `<li class="list-item"><span>🟢 ${nama}</span><button type="button" onclick="banUser('${nama}')" style="background:red;color:#fff;border:none;font-size:10px;padding:2px 5px;border-radius:3px;">BAN</button></li>`;
-        });
-    });
+        // CEK MAINTENANCE DULU
+        const snapM = await database.ref('maintenance/isLive').once('value');
+        if (snapM.val() === true && !bypassUsers.includes(uInput)) {
+            return alert("⛔ MAINTENANCE MODE\nMaaf, hanya Admin & Staf Khusus yang bisa masuk.");
+        }
 
-    database.ref('status_user').on('value', snap => {
-        const bList = document.getElementById('bannedList');
-        bList.innerHTML = "";
-        snap.forEach(c => {
-            if(c.val() === "banned") {
-                bList.innerHTML += `<li class="list-item"><span>🚫 ${c.key}</span><button type="button" onclick="unbanUser('${c.key}')" style="background:green;color:#fff;border:none;font-size:10px;padding:2px 5px;border-radius:3px;">UNBAN</button></li>`;
+        // Cek User di Database (Custom/Registrasi)
+        const snapCustom = await database.ref('users_custom/' + uInput).once('value');
+        const customData = snapCustom.val();
+        
+        const isDefault = defaultUsers.find(u => u.user === uInput && u.pass === pInput);
+        const isCustom = customData && customData.pass === pInput;
+
+        if (isDefault || isCustom) {
+            const snapBan = await database.ref('status_user/' + uInput).once('value');
+            if (snapBan.val() === "banned") return alert("AKSES DIBLOKIR!");
+
+            // Login Berhasil: Simpan ke localStorage
+            localStorage.setItem('savedUser', uInput);
+            
+            database.ref('log_online/' + uInput).set({
+                username: uInput, 
+                last_seen: firebase.database.ServerValue.TIMESTAMP
+            });
+
+            if (uInput === "admin") { 
+                if(typeof tampilkanLogAdmin === 'function') tampilkanLogAdmin(); 
+            } else { 
+                window.location.href = "page91.html"; 
             }
-        });
+        } else {
+            alert('Username atau Password Salah!');
+        }
     });
 }
 
-window.banUser = function(t) {
-    if (t === "admin" || t === "9¹") return;
-    if (confirm("Ban " + t + "?")) { database.ref('status_user/' + t).set("banned"); database.ref('log_online/' + t).remove(); }
+// ==========================================
+// 4. ADMIN CONTROL FUNCTIONS
+// ==========================================
+window.setMaintenance = function(status) {
+    database.ref('maintenance/isLive').set(status).then(() => {
+        alert("Maintenance Berhasil Diubah!");
+    });
 };
 
-window.unbanUser = function(t) {
-    if (confirm("Unban " + t + "?")) database.ref('status_user/' + t).remove();
-};
+function tampilkanLogAdmin() {
+    const p = document.getElementById('adminPanel');
+    if (p) p.style.display = 'block';
+}
 
-window.updateWebSekarang = function() {
-    const t = document.getElementById('inputTeks').value;
-    const d = parseInt(document.getElementById('timerUpdate').value);
-    const exp = d > 0 ? Date.now() + (d * 3600000) : null;
-    database.ref('konten_web').set({ pesan: t, waktu: new Date().toLocaleString(), exp: exp }).then(() => alert("Pesan Terupdate!"));
-};
-
-window.updateJadwalSistem = function() {
-    const j = document.getElementById('pilihJenisJadwal').value;
-    const h = document.getElementById('pilihHari').value;
-    const i = document.getElementById('isiJadwalBaru').value;
-    database.ref('data_kelas/' + j + '/' + h).set(i).then(() => alert("Jadwal Berhasil!"));
-};
-
-window.hapusLogServer = function() {
-    if(confirm("Bersihkan log?")) database.ref('log_online').remove();
-};
-
+// Cleanup Log Online Otomatis
 setInterval(() => {
     const skrg = Date.now();
     database.ref('log_online').once('value', s => {

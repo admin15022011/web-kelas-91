@@ -21,7 +21,7 @@
         .admin-link { color: #00a2ff; text-decoration: none; font-weight: bold; margin-left: 5px; }
     </style>
 </head>
-<body>
+<body style="display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #000; color: #fff; overflow-x: hidden;">
     <div class="background-container" id="rainContainer"></div>
     <div class="login-box">
         <h2>Login</h2>
@@ -73,6 +73,15 @@
                     <select id="pilihHari"><option value="Senin">Senin</option><option value="Selasa">Selasa</option><option value="Rabu">Rabu</option><option value="Kamis">Kamis</option><option value="Jumat">Jumat</option></select>
                     <textarea id="isiJadwalBaru"></textarea>
                     <button type="button" onclick="window.updateJadwalSistem()" class="btn-adm" style="background:#9b59b6; color:#fff;">SIMPAN JADWAL</button>                  
+                    <div class="adm-card">
+    <h4 style="color:#ff4d4d; margin:0 0 5px 0;">🛠️ MAINTENANCE MODE</h4>
+    <div style="display:flex; gap:5px;">
+        <button type="button" onclick="setMaintenance(true)" class="btn-adm" style="background:#ff4d4d; flex:1;">AKTIFKAN</button>
+        <button type="button" onclick="setMaintenance(false)" class="btn-adm" style="background:#2ecc71; flex:1;">MATIKAN</button>
+    </div>
+    <p id="mtStatus" style="font-size:10px; margin-top:5px; text-align:center;">Status: Memuat...</p>
+</div>
+
                 </div>
                 <button type="button" onclick="window.hapusLogServer()" style="background:none; border:none; color:#555; font-size:10px; cursor:pointer;">Clear Logs</button>
             </div>
