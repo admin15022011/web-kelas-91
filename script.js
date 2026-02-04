@@ -46,7 +46,7 @@ const dataUsers = [
     { user: "user25", pass: "pass25" }
 ];
 
-// 4. LOGIKA LOGIN (ANTI-NYANGKUT + 1 USER 1 HP)
+// 4. LOGIKA LOGIN (ANTI-NYANGKUT + CEK USER SEDANG AKTIF)
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = document.getElementById('username').value;
@@ -54,27 +54,31 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     const validUser = dataUsers.find(u => u.user === user && u.pass === pass);
 
     if (validUser) {
-        const snapshot = await database.ref('status_user/' + user).once('value');
-        if (snapshot.exists() && snapshot.val() === "banned") {
+        // Cek apakah user diban
+        const statusSnapshot = await database.ref('status_user/' + user).once('value');
+        if (statusSnapshot.exists() && statusSnapshot.val() === "banned") {
             alert("MAAF! Anda telah diban dari sistem.");
             return;
         }
 
-        // BUAT KUNCI SESI UNIK
-        const uniqueSession = "SESSION_" + Date.now();
+        // --- PROTEKSI 1 USER 1 ORANG (PINTU RAPAT) ---
+        const cekOnline = await database.ref('log_online/' + user).once('value');
+        // Jika bukan admin dan user sudah ada di daftar online, TOLAK LOGIN
+        if (user !== "admin" && cekOnline.exists()) {
+            alert("Gagal Login: Akun '" + user + "' sedang aktif di perangkat lain!");
+            return; 
+        }
+
         currentUserSession = user;
         const waktu = new Date().toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit' });
-        
         localStorage.setItem('savedUser', user);
-        localStorage.setItem('sessionID', uniqueSession); // Simpan kunci di HP ini
         
         const userLogRef = database.ref('log_online/' + user);
         
-        // Simpan data ke server (Termasuk sessionID)
+        // Simpan data ke server
         userLogRef.set({ 
             username: user, 
             jam: waktu,
-            sessionID: uniqueSession,
             last_seen: firebase.database.ServerValue.TIMESTAMP 
         });
 
@@ -83,7 +87,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         if (user === "admin") {
             alert('Mode Owner Aktif!');
             tampilkanLogAdmin(); 
-            mulaiPembersihOtomatis();
+            mulaiPembersihOtomatis(); 
         } else {
             alert('Login Berhasil!');
             window.location.href = "page91.html";
@@ -148,7 +152,7 @@ function tampilkanLogAdmin() {
     });
 }
 
-// FUNGSI SAPU OTOMATIS
+// FUNGSI SAPU OTOMATIS (Wajib Aktif untuk Admin)
 function mulaiPembersihOtomatis() {
     setInterval(() => {
         const sekarang = Date.now();

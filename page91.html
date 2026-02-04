@@ -16,7 +16,7 @@
   <p>Testing To lol</p>
 
   <script>
-    // 1. KONFIGURASI FIREBASE (PASTIKAN TETAP SEPERTI INI)
+    // 1. KONFIGURASI FIREBASE (SAMAKAN DENGAN INDEX)
     const firebaseConfig = {
         apiKey: "AIzaSyDlucMVwMUbw7Ab3t2AVzI13EOHUrqDNZw",
         authDomain: "web-kelas-5b83a.firebaseapp.com",
@@ -31,40 +31,32 @@
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    // 2. LOGIKA LAPOR DIRI (Heartbeat 5 Detik & Anti-Login Ganda)
+    // 2. LOGIKA LAPOR DIRI (PENTING AGAR PINTU TETAP TERBUKA BUAT LO SENDIRI)
     const userAktif = localStorage.getItem('savedUser');
-    const mySessionID = localStorage.getItem('sessionID'); // Ambil kunci sesi dari login
 
     if (!userAktif || userAktif === "undefined") {
-        alert("Sesi habis, silakan login ulang!");
         window.location.href = "index.html"; 
     } else {
         const userLogRef = database.ref('log_online/' + userAktif);
 
-        // CEK LOGIN GANDA: Jika sessionID di server beda dengan di HP ini, tendang!
-        userLogRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.sessionID && data.sessionID !== mySessionID) {
-                alert("Akun ini telah login di perangkat lain!");
-                localStorage.clear();
-                window.location.href = "index.html";
-            }
-        });
-
         function kirimSinyalAktif() {
             const waktu = new Date().toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit' });
             
+            // Update last_seen tiap 5 detik biar nggak dianggap "mati" sama Sapu Otomatis Admin
             userLogRef.update({
-                username: userAktif, 
+                username: userAktif,
                 jam: waktu,
-                sessionID: mySessionID, // Kirim ID sesi biar gak dikira login baru
                 last_seen: firebase.database.ServerValue.TIMESTAMP,
-                status: "Aktif di Page 91"
-            }).catch(err => console.error("Gagal lapor:", err));
+                status: "Aktif"
+            });
         }
 
         kirimSinyalAktif();
+        
+        // Hapus nama dari daftar online kalau user logout atau tutup tab
         userLogRef.onDisconnect().remove();
+
+        // Lapor tiap 5 detik
         setInterval(kirimSinyalAktif, 5000);
 
         // FITUR BAN REALTIME
@@ -79,17 +71,13 @@
 
     // 3. FUNGSI RIWAYAT PRIBADI
     window.bukaLogPribadi = function() {
-        if (!userAktif) return alert("Login dulu!");
+        if (!userAktif) return;
         database.ref('riwayat_pribadi/' + userAktif).limitToLast(5).once('value', (snapshot) => {
             let text = `📜 Riwayat Login (${userAktif}):\n\n`;
             if (snapshot.exists()) {
-                snapshot.forEach(child => {
-                    text += `• ${child.val().waktu}\n`;
-                });
+                snapshot.forEach(child => { text += `• ${child.val().waktu}\n`; });
                 alert(text);
-            } else {
-                alert("Belum ada riwayat.");
-            }
+            } else { alert("Belum ada riwayat."); }
         });
     };
   </script>
