@@ -11,73 +11,87 @@ const firebaseConfig = {
     appId: "1:711947014423:web:d8cb787c503d7d7538e752",
     measurementId: "G-RYNNLZCGY5"
 };
-firebase.initializeApp(firebaseConfig);
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 const database = firebase.database();
 
-// State Global
+// State Global & Session Management
 const me = localStorage.getItem('savedUser') || "Guest";
-let isMaintenanceActive = false;
+// Generate token unik untuk tiap perangkat yang login
+let myToken = localStorage.getItem('sessionToken');
+if (!myToken) {
+    myToken = Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('sessionToken', myToken);
+}
 
-/** * Daftar bypass penulisan */
-const bypassUsers = ["admin", "Tya", "9¹", "Kontol"]; 
+const bypassUsers = ["admin", "Tya", "9¹", "Kontol"];
 
 // ==========================================
-// 2. SISTEM PING ONLINE (SETIAP 5 DETIK)
+// 2. LIVE MONITORING (BAN, MULTI-LOGIN, & PING)
 // ==========================================
-// Jalankan hanya jika user sudah login dan bukan di halaman login
-if (me !== "Guest" && window.location.href.includes("page91.html")) {
-    const userStatusRef = database.ref('log_online/' + me);
+if (me !== "Guest") {
     
-    // Ping awal
-    userStatusRef.set({
-        username: me,
-        last_seen: firebase.database.ServerValue.TIMESTAMP
+    // A. LIVE BAN CHECK: Jika admin ban, user langsung ditendang
+    database.ref('status_user/' + me).on('value', snap => {
+        if (snap.val() === "banned") {
+            alert("🚫 Akun Anda telah diblokir oleh Admin!");
+            logout();
+        }
     });
 
-    // Ping rutin setiap 5 detik
-    setInterval(() => {
-        userStatusRef.update({
-            last_seen: firebase.database.ServerValue.TIMESTAMP
+    // B. ANTI-MULTI LOGIN: 1 User 1 Perangkat (Kecuali Admin/Bypass)
+    if (!bypassUsers.includes(me)) {
+        database.ref('sessions/' + me).on('value', snap => {
+            const activeToken = snap.val();
+            if (activeToken && activeToken !== myToken) {
+                alert("⚠️ Akun ini baru saja login di perangkat lain!");
+                logout();
+            }
         });
-    }, 5000);
+    }
 
-    // Otomatis hapus jika tab ditutup atau koneksi putus
-    userStatusRef.onDisconnect().remove();
+    // C. PING ONLINE 5 DETIK: Lapor ke database
+    if (window.location.href.includes("page91.html")) {
+        const userStatusRef = database.ref('log_online/' + me);
+        
+        const sendPing = () => {
+            userStatusRef.set({
+                username: me,
+                last_seen: firebase.database.ServerValue.TIMESTAMP
+            });
+        };
+
+        sendPing(); // Ping pertama
+        setInterval(sendPing, 5000); // Rutin tiap 5 detik
+        userStatusRef.onDisconnect().remove();
+    }
 }
 
 // ==========================================
 // 3. MONITORING MAINTENANCE (LIVE KICK)
 // ==========================================
 database.ref('maintenance/isLive').on('value', snap => {
-    isMaintenanceActive = snap.val();
-    
+    const isMT = snap.val();
     const elStatus = document.getElementById('mtStatus');
+    
     if (elStatus) {
-        elStatus.innerText = isMaintenanceActive ? "Status: AKTIF" : "Status: NON-AKTIF";
-        elStatus.style.color = isMaintenanceActive ? "#ff4d4d" : "#2ecc71";
-        elStatus.style.fontWeight = "bold";
+        elStatus.innerText = isMT ? "Status: AKTIF" : "Status: NON-AKTIF";
+        elStatus.style.color = isMT ? "#ff4d4d" : "#2ecc71";
     }
 
-    if (isMaintenanceActive === true) {
-        if (!bypassUsers.includes(me)) {
-            if (!window.location.href.includes("index.html")) {
-                alert("🚨 SERVER MAINTENANCE!\nSistem sedang diperbarui, Anda dialihkan ke halaman utama.");
-                window.location.href = "index.html";
-            }
+    if (isMT === true && !bypassUsers.includes(me)) {
+        if (!window.location.href.includes("index.html")) {
+            alert("🚨 Server sedang Maintenance!");
+            logout();
         }
     }
 });
 
 // ==========================================
-// 4. SISTEM LOGIN (HARD-LOCKED SECURITY)
+// 4. SISTEM LOGIN
 // ==========================================
-const defaultUsers = [
-    { user: "9¹", pass: "91" }, 
-    { user: "admin", pass: "admin123" }, 
-    { user: "Tya", pass: "tya123" }
-];
-for (let i = 1; i <= 25; i++) { defaultUsers.push({ user: "user" + i, pass: "pass" + i }); }
-
 const loginForm = document.getElementById('loginForm');
 if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
@@ -85,24 +99,31 @@ if (loginForm) {
         const uInput = document.getElementById('username').value.trim();
         const pInput = document.getElementById('password').value.trim();
 
+        // 1. Cek Maintenance
         const snapM = await database.ref('maintenance/isLive').once('value');
         if (snapM.val() === true && !bypassUsers.includes(uInput)) {
-            return alert("⛔ MAINTENANCE MODE\nMaaf, hanya Admin & Staf Khusus yang bisa masuk.");
+            return alert("⛔ Server sedang Maintenance!");
         }
 
+        // 2. Cek Banned
+        const snapBan = await database.ref('status_user/' + uInput).once('value');
+        if (snapBan.val() === "banned") return alert("AKSES DIBLOKIR!");
+
+        // 3. Validasi User (Default & Custom)
         const snapCustom = await database.ref('users_custom/' + uInput).once('value');
         const customData = snapCustom.val();
         
+        const defaultUsers = [{ user: "9¹", pass: "91" }, { user: "admin", pass: "admin123" }];
         const isDefault = defaultUsers.find(u => u.user === uInput && u.pass === pInput);
         const isCustom = customData && customData.pass === pInput;
 
         if (isDefault || isCustom) {
-            const snapBan = await database.ref('status_user/' + uInput).once('value');
-            if (snapBan.val() === "banned") return alert("AKSES DIBLOKIR!");
-
             localStorage.setItem('savedUser', uInput);
             
-            // Log online awal saat klik login
+            // Simpan Session Token untuk kunci 1 perangkat
+            database.ref('sessions/' + uInput).set(myToken);
+            
+            // Catat log online
             database.ref('log_online/' + uInput).set({
                 username: uInput, 
                 last_seen: firebase.database.ServerValue.TIMESTAMP
@@ -120,24 +141,22 @@ if (loginForm) {
 }
 
 // ==========================================
-// 5. ADMIN CONTROL FUNCTIONS (UPDATE)
+// 5. FUNGSI PANEL ADMIN
 // ==========================================
 
 window.updateWebSekarang = function() {
     const teks = document.getElementById('inputTeks').value;
     if (!teks) return alert("Pesan kosong!");
-    database.ref('konten_web').update({
-        pesan: teks,
-        waktu: new Date().toLocaleTimeString()
-    }).then(() => alert("📢 Pengumuman berhasil di-update!"));
+    database.ref('konten_web').update({ pesan: teks, waktu: new Date().toLocaleTimeString() })
+    .then(() => alert("📢 Pengumuman diperbarui!"));
 };
 
 window.tambahUserCustom = function() {
-    const user = document.getElementById('customUser').value.trim();
-    const pass = document.getElementById('customPass').value.trim();
-    if (!user || !pass) return alert("User/Pass tidak boleh kosong!");
-    database.ref('users_custom/' + user).set({ pass: pass }).then(() => {
-        alert("✅ User " + user + " berhasil didaftarkan!");
+    const u = document.getElementById('customUser').value.trim();
+    const p = document.getElementById('customPass').value.trim();
+    if (!u || !p) return alert("Isi User & Pass!");
+    database.ref('users_custom/' + u).set({ pass: p }).then(() => {
+        alert("✅ User " + u + " tersimpan!");
         document.getElementById('customUser').value = "";
         document.getElementById('customPass').value = "";
     });
@@ -147,55 +166,56 @@ window.updateJadwalSistem = function() {
     const jenis = document.getElementById('pilihJenisJadwal').value;
     const hari = document.getElementById('pilihHari').value;
     const isi = document.getElementById('isiJadwalBaru').value;
-    if (!isi) return alert("Isi jadwal kosong!");
-    database.ref('data_kelas/' + jenis + '/' + hari).set(isi).then(() => {
-        alert("📅 Jadwal " + jenis + " hari " + hari + " diperbarui!");
-    });
+    database.ref('data_kelas/' + jenis + '/' + hari).set(isi).then(() => alert("📅 Jadwal diperbarui!"));
 };
 
-window.setRole = function(role) {
-    const user = document.getElementById('adminUser').value.trim();
-    if(!user) return alert("Masukkan nama user!");
-    database.ref('roles/' + user).set(role).then(() => {
-        alert("👑 " + user + " sekarang: " + role);
-    });
+window.setMaintenance = function(s) {
+    database.ref('maintenance/isLive').set(s).then(() => alert("Maintenance: " + (s ? "ON" : "OFF")));
 };
 
-window.setMaintenance = function(status) {
-    database.ref('maintenance/isLive').set(status).then(() => {
-        alert("Maintenance Mode: " + (status ? "ON" : "OFF"));
-    });
+window.banUser = (u) => {
+    if(confirm("Ban permanent " + u + "?")) {
+        database.ref('status_user/' + u).set('banned');
+        database.ref('sessions/' + u).remove(); // Hapus session supaya ditendang
+        alert(u + " telah diblokir.");
+    }
 };
 
-// Monitoring User Online UI (List Admin)
+// Monitoring List Online di UI Admin
 database.ref('log_online').on('value', snap => {
     const list = document.getElementById('onlineList');
     if (list) {
         list.innerHTML = "";
         snap.forEach(c => {
-            list.innerHTML += `<li class="list-item">🟢 ${c.key} <button onclick="banUser('${c.key}')" style="background:red; color:white; border:none; border-radius:3px; font-size:9px; cursor:pointer;">BAN</button></li>`;
+            list.innerHTML += `
+                <li class="list-item">
+                    <span>🟢 ${c.key}</span>
+                    <button onclick="banUser('${c.key}')" style="background:#ff4d4d; color:white; border:none; padding:2px 6px; border-radius:4px; font-size:10px; cursor:pointer;">BAN</button>
+                </li>`;
         });
     }
 });
 
-window.banUser = (u) => {
-    if(confirm("Ban " + u + "?")) database.ref('status_user/' + u).set('banned');
-};
+function logout() {
+    if (me !== "Guest") database.ref('log_online/' + me).remove();
+    localStorage.clear();
+    window.location.replace("index.html");
+}
 
 function tampilkanLogAdmin() {
     const p = document.getElementById('adminPanel');
     if (p) p.style.display = 'block';
 }
 
-// Cleanup Log Online (Sinkron dengan Ping 5 Detik)
+// Cleanup Otomatis User yang tidak aktif (Refresh tiap 5 detik)
 setInterval(() => {
     const skrg = Date.now();
     database.ref('log_online').once('value', s => {
-        s.forEach(c => { 
-            // Toleransi 10 detik agar list tetap stabil
-            if (skrg - (c.val().last_seen || 0) > 10000) { 
-                c.ref.remove(); 
-            } 
+        s.forEach(c => {
+            // Jika tidak ping dalam 10 detik, anggap offline
+            if (skrg - (c.val().last_seen || 0) > 10000) {
+                c.ref.remove();
+            }
         });
     });
 }, 5000);
